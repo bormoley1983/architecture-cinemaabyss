@@ -1,0 +1,31 @@
+{
+  "id": "local-env",
+  "name": "Local Environment",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8080",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "moviesServiceUrl",
+      "value": "http://127.0.0.1:8081",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "eventsServiceUrl",
+      "value": "http://127.0.0.1:8082",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "proxyServiceUrl",
+      "value": "http://127.0.0.1:8000",
+      "type": "default",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}

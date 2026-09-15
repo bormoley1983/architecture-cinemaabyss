@@ -1,0 +1,31 @@
+{
+  "id": "local-env",
+  "name": "Local Environment",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://cinemaabyss.example.com",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "moviesServiceUrl",
+      "value": "http://cinemaabyss.example.com",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "eventsServiceUrl",
+      "value": "http://cinemaabyss.example.com",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "proxyServiceUrl",
+      "value": "http://cinemaabyss.example.com",
+      "type": "default",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}

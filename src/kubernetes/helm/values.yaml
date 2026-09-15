@@ -1,0 +1,185 @@
+# Global settings
+global:
+  namespace: cinemaabyss
+  domain: cinemaabyss.example.com
+
+# Image pull secrets
+imagePullSecrets:
+  dockerconfigjson: ewoJImF1dGhzIjogewoJCSJnaGNyLmlvIjogewoJCQkiYXV0aCI6
+# Database configuration
+database:
+  host: postgres
+  port: 5432
+  name: cinemaabyss
+  user: postgres
+  password: cG9zdGdyZXNfcGFzc3dvcmQ=
+  image:
+    repository: postgres
+    tag: 14
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  persistence:
+    enabled: true
+    size: 10Gi
+    accessMode: ReadWriteOnce
+
+# Monolith configuration
+monolith:
+  enabled: true
+  image:
+    repository: ghcr.io/db-exp/cinemaabysstest/monolith
+    tag: latest
+    pullPolicy: Always
+  replicas: 1
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  service:
+    port: 8080
+    targetPort: 8080
+    type: ClusterIP
+
+# Proxy service configuration
+proxyService:
+  enabled: true
+  image:
+    repository: ghcr.io/db-exp/cinemaabysstest/proxy-service
+    tag: latest
+    pullPolicy: Always
+  replicas: 1
+  resources:
+    limits:
+      cpu: 300m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  service:
+    port: 80
+    targetPort: 8000
+    type: ClusterIP
+
+# Movies service configuration
+moviesService:
+  enabled: true
+  image:
+    repository: ghcr.io/db-exp/cinemaabysstest/movies-service
+    tag: latest
+    pullPolicy: Always
+  replicas: 1
+  resources:
+    limits:
+      cpu: 300m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  service:
+    port: 8081
+    targetPort: 8081
+    type: ClusterIP
+
+# Events service configuration
+eventsService:
+  enabled: true
+  image:
+    repository: ghcr.io/db-exp/cinemaabysstest/events-service
+    tag: latest
+    pullPolicy: Always
+  replicas: 1
+  resources:
+    limits:
+      cpu: 300m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  service:
+    port: 8082
+    targetPort: 8082
+    type: ClusterIP
+
+# Kafka configuration
+kafka:
+  enabled: true
+  image:
+    repository: wurstmeister/kafka
+    tag: 2.13-2.7.0
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 512Mi
+  persistence:
+    enabled: true
+    size: 5Gi
+    accessMode: ReadWriteOnce
+  topics:
+    - name: movie-events
+      partitions: 1
+      replicationFactor: 1
+    - name: user-events
+      partitions: 1
+      replicationFactor: 1
+    - name: payment-events
+      partitions: 1
+      replicationFactor: 1
+
+# Zookeeper configuration
+zookeeper:
+  enabled: true
+  image:
+    repository: wurstmeister/zookeeper
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  persistence:
+    enabled: true
+    size: 1Gi
+    accessMode: ReadWriteOnce
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    - host: cinemaabyss.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: proxy-service
+          port: 80
+        - path: /api/events
+          pathType: Prefix
+          service: events-service
+          port: 8082
+
+# Application configuration
+config:
+  # Strangler Fig configuration
+  gradualMigration: "true"
+  moviesMigrationPercent: "100"

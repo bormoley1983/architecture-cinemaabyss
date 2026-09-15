@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cinemaabyss-config
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "cinemaabyss.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  # Database configuration
+  DB_HOST: {{ .Values.database.host | quote }}
+  DB_PORT: {{ .Values.database.port | quote }}
+  DB_NAME: {{ .Values.database.name | quote }}
+  DB_USER: {{ .Values.database.user | quote }}
+
+  # Service URLs
+  MONOLITH_URL: "http://monolith:{{ .Values.monolith.service.port }}"
+  MOVIES_SERVICE_URL: "http://movies:{{ .Values.moviesService.service.port }}"
+  
+  # Strangler Fig configuration
+  GRADUAL_MIGRATION: {{ .Values.config.gradualMigration | quote }}
+  MOVIES_MIGRATION_PERCENT: {{ .Values.config.moviesMigrationPercent | quote }}

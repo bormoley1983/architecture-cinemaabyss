@@ -1,0 +1,25 @@
+{
+  "name": "cinemaabyss-api-tests",
+  "version": "1.0.0",
+  "description": "API tests for CinemaAbyss microservices architecture",
+  "main": "run-tests.js",
+  "scripts": {
+    "test": "node run-tests.js",
+    "test:local": "node run-tests.js --environment local",
+    "test:docker": "node run-tests.js --environment docker",
+    "test:kubernetes": "node run-tests.js --environment kubernetes"
+  },
+  "keywords": [
+    "postman",
+    "newman",
+    "api",
+    "testing",
+    "microservices"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "newman": "^5.3.2",
+    "yargs": "^17.6.2"
+  }
+}

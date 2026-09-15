@@ -1,0 +1,797 @@
+openapi: 3.0.3
+info:
+  title: CinemaAbyss API
+  description: |
+    API спецификация для системы CinemaAbyss, включающая монолит и микросервисы.
+    
+    Система CinemaAbyss представляет собой платформу для управления фильмами, пользователями, платежами и подписками.
+    Архитектура системы включает монолитное приложение и выделенные микросервисы.
+  version: 1.0.0
+  contact:
+    name: CinemaAbyss Team
+    email: support@cinemaabyss.com
+
+servers:
+  - url: http://localhost:8000
+    description: API Gateway (Proxy Service)
+  - url: http://localhost:8080
+    description: Монолитное приложение
+  - url: http://localhost:8081
+    description: Микросервис фильмов
+  - url: http://localhost:8082
+    description: Микросервис событий
+
+tags:
+  - name: users
+    description: Операции с пользователями
+  - name: movies
+    description: Операции с фильмами
+  - name: payments
+    description: Операции с платежами
+  - name: subscriptions
+    description: Операции с подписками
+  - name: events
+    description: Операции с событиями
+  - name: health
+    description: Проверка работоспособности сервисов
+
+paths:
+  # Общие эндпоинты для проверки работоспособности
+  /health:
+    get:
+      tags:
+        - health
+      summary: Проверка работоспособности API Gateway
+      description: Возвращает статус работоспособности прокси-сервиса
+      operationId: getProxyHealth
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Strangler Fig Proxy is healthy
+
+  # Монолит и микросервис фильмов
+  /api/movies:
+    get:
+      tags:
+        - movies
+      summary: Получение списка всех фильмов
+      description: Возвращает список всех фильмов с их метаданными
+      operationId: getAllMovies
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Movie'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - movies
+      summary: Создание нового фильма
+      description: Добавляет новый фильм в систему
+      operationId: createMovie
+      requestBody:
+        description: Данные фильма для создания
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MovieInput'
+      responses:
+        '201':
+          description: Фильм успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Movie'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/movies/health:
+    get:
+      tags:
+        - health
+      summary: Проверка работоспособности микросервиса фильмов
+      description: Возвращает статус работоспособности микросервиса фильмов
+      operationId: getMoviesServiceHealth
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: boolean
+                    example: true
+
+  # Монолит - пользователи
+  /api/users:
+    get:
+      tags:
+        - users
+      summary: Получение списка всех пользователей
+      description: Возвращает список всех пользователей системы
+      operationId: getAllUsers
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - users
+      summary: Создание нового пользователя
+      description: Регистрирует нового пользователя в системе
+      operationId: createUser
+      requestBody:
+        description: Данные пользователя для создания
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserInput'
+      responses:
+        '201':
+          description: Пользователь успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Монолит - платежи
+  /api/payments:
+    get:
+      tags:
+        - payments
+      summary: Получение списка всех платежей
+      description: Возвращает список всех платежей в системе
+      operationId: getAllPayments
+      parameters:
+        - name: user_id
+          in: query
+          description: ID пользователя для фильтрации платежей
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Payment'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - payments
+      summary: Создание нового платежа
+      description: Регистрирует новый платеж в системе
+      operationId: createPayment
+      requestBody:
+        description: Данные платежа для создания
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentInput'
+      responses:
+        '201':
+          description: Платеж успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Монолит - подписки
+  /api/subscriptions:
+    get:
+      tags:
+        - subscriptions
+      summary: Получение списка всех подписок
+      description: Возвращает список всех подписок в системе
+      operationId: getAllSubscriptions
+      parameters:
+        - name: user_id
+          in: query
+          description: ID пользователя для фильтрации подписок
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Subscription'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - subscriptions
+      summary: Создание новой подписки
+      description: Регистрирует новую подписку в системе
+      operationId: createSubscription
+      requestBody:
+        description: Данные подписки для создания
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionInput'
+      responses:
+        '201':
+          description: Подписка успешно создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Микросервис событий
+  /api/events/health:
+    get:
+      tags:
+        - health
+      summary: Проверка работоспособности микросервиса событий
+      description: Возвращает статус работоспособности микросервиса событий
+      operationId: getEventsServiceHealth
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: boolean
+                    example: true
+
+  /api/events/movie:
+    post:
+      tags:
+        - events
+      summary: Создание события фильма
+      description: Регистрирует новое событие, связанное с фильмом
+      operationId: createMovieEvent
+      requestBody:
+        description: Данные события фильма
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MovieEvent'
+      responses:
+        '201':
+          description: Событие успешно создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/events/user:
+    post:
+      tags:
+        - events
+      summary: Создание события пользователя
+      description: Регистрирует новое событие, связанное с пользователем
+      operationId: createUserEvent
+      requestBody:
+        description: Данные события пользователя
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserEvent'
+      responses:
+        '201':
+          description: Событие успешно создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/events/payment:
+    post:
+      tags:
+        - events
+      summary: Создание события платежа
+      description: Регистрирует новое событие, связанное с платежом
+      operationId: createPaymentEvent
+      requestBody:
+        description: Данные события платежа
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentEvent'
+      responses:
+        '201':
+          description: Событие успешно создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    # Основные модели данных
+    Movie:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Уникальный идентификатор фильма
+          example: 1
+        title:
+          type: string
+          description: Название фильма
+          example: "Inception"
+        description:
+          type: string
+          description: Описание фильма
+          example: "A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O."
+        genres:
+          type: array
+          description: Жанры фильма
+          items:
+            type: string
+          example: ["Sci-Fi", "Action", "Thriller"]
+        rating:
+          type: number
+          format: float
+          description: Рейтинг фильма
+          example: 8.8
+      required:
+        - id
+        - title
+        - description
+        - rating
+
+    MovieInput:
+      type: object
+      properties:
+        title:
+          type: string
+          description: Название фильма
+          example: "Inception"
+        description:
+          type: string
+          description: Описание фильма
+          example: "A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O."
+        genres:
+          type: array
+          description: Жанры фильма
+          items:
+            type: string
+          example: ["Sci-Fi", "Action", "Thriller"]
+        rating:
+          type: number
+          format: float
+          description: Рейтинг фильма
+          example: 8.8
+      required:
+        - title
+        - description
+        - rating
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Уникальный идентификатор пользователя
+          example: 1
+        username:
+          type: string
+          description: Имя пользователя
+          example: "john_doe"
+        email:
+          type: string
+          format: email
+          description: Email пользователя
+          example: "john.doe@example.com"
+      required:
+        - id
+        - username
+        - email
+
+    UserInput:
+      type: object
+      properties:
+        username:
+          type: string
+          description: Имя пользователя
+          example: "john_doe"
+        email:
+          type: string
+          format: email
+          description: Email пользователя
+          example: "john.doe@example.com"
+      required:
+        - username
+        - email
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Уникальный идентификатор платежа
+          example: 1
+        user_id:
+          type: integer
+          description: Идентификатор пользователя, совершившего платеж
+          example: 1
+        amount:
+          type: number
+          format: float
+          description: Сумма платежа
+          example: 9.99
+        timestamp:
+          type: string
+          format: date-time
+          description: Время совершения платежа
+          example: "2023-01-15T14:30:00Z"
+      required:
+        - id
+        - user_id
+        - amount
+        - timestamp
+
+    PaymentInput:
+      type: object
+      properties:
+        user_id:
+          type: integer
+          description: Идентификатор пользователя, совершающего платеж
+          example: 1
+        amount:
+          type: number
+          format: float
+          description: Сумма платежа
+          example: 9.99
+      required:
+        - user_id
+        - amount
+
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Уникальный идентификатор подписки
+          example: 1
+        user_id:
+          type: integer
+          description: Идентификатор пользователя, оформившего подписку
+          example: 1
+        plan_type:
+          type: string
+          description: Тип плана подписки
+          example: "premium"
+        start_date:
+          type: string
+          format: date-time
+          description: Дата начала подписки
+          example: "2023-01-01T00:00:00Z"
+        end_date:
+          type: string
+          format: date-time
+          description: Дата окончания подписки
+          example: "2023-12-31T23:59:59Z"
+      required:
+        - id
+        - user_id
+        - plan_type
+        - start_date
+        - end_date
+
+    SubscriptionInput:
+      type: object
+      properties:
+        user_id:
+          type: integer
+          description: Идентификатор пользователя, оформляющего подписку
+          example: 1
+        plan_type:
+          type: string
+          description: Тип плана подписки
+          example: "premium"
+        start_date:
+          type: string
+          format: date-time
+          description: Дата начала подписки
+          example: "2023-01-01T00:00:00Z"
+        end_date:
+          type: string
+          format: date-time
+          description: Дата окончания подписки
+          example: "2023-12-31T23:59:59Z"
+      required:
+        - user_id
+        - plan_type
+        - start_date
+        - end_date
+
+    # Модели событий
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Уникальный идентификатор события
+          example: "movie-1-viewed"
+        type:
+          type: string
+          description: Тип события
+          example: "movie"
+        timestamp:
+          type: string
+          format: date-time
+          description: Время события
+          example: "2023-01-15T14:30:00Z"
+        payload:
+          type: object
+          description: Полезная нагрузка события (зависит от типа события)
+      required:
+        - id
+        - type
+        - timestamp
+        - payload
+
+    MovieEvent:
+      type: object
+      properties:
+        movie_id:
+          type: integer
+          description: Идентификатор фильма
+          example: 1
+        title:
+          type: string
+          description: Название фильма
+          example: "Inception"
+        action:
+          type: string
+          description: Действие с фильмом
+          example: "viewed"
+        user_id:
+          type: integer
+          description: Идентификатор пользователя (опционально)
+          example: 1
+        rating:
+          type: number
+          format: float
+          description: Рейтинг (опционально)
+          example: 8.5
+        genres:
+          type: array
+          description: Жанры фильма (опционально)
+          items:
+            type: string
+          example: ["Sci-Fi", "Action"]
+        description:
+          type: string
+          description: Описание фильма (опционально)
+          example: "A mind-bending thriller"
+      required:
+        - movie_id
+        - title
+        - action
+
+    UserEvent:
+      type: object
+      properties:
+        user_id:
+          type: integer
+          description: Идентификатор пользователя
+          example: 1
+        username:
+          type: string
+          description: Имя пользователя (опционально)
+          example: "john_doe"
+        email:
+          type: string
+          description: Email пользователя (опционально)
+          example: "john.doe@example.com"
+        action:
+          type: string
+          description: Действие пользователя
+          example: "registered"
+        timestamp:
+          type: string
+          format: date-time
+          description: Время события
+          example: "2023-01-15T14:30:00Z"
+      required:
+        - user_id
+        - action
+        - timestamp
+
+    PaymentEvent:
+      type: object
+      properties:
+        payment_id:
+          type: integer
+          description: Идентификатор платежа
+          example: 1
+        user_id:
+          type: integer
+          description: Идентификатор пользователя
+          example: 1
+        amount:
+          type: number
+          format: float
+          description: Сумма платежа
+          example: 9.99
+        status:
+          type: string
+          description: Статус платежа
+          example: "completed"
+        timestamp:
+          type: string
+          format: date-time
+          description: Время платежа
+          example: "2023-01-15T14:30:00Z"
+        method_type:
+          type: string
+          description: Тип метода оплаты (опционально)
+          example: "credit_card"
+      required:
+        - payment_id
+        - user_id
+        - amount
+        - status
+        - timestamp
+
+    EventResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Статус операции
+          example: "success"
+        partition:
+          type: integer
+          description: Партиция Kafka
+          example: 0
+        offset:
+          type: integer
+          description: Смещение в партиции Kafka
+          example: 42
+        event:
+          $ref: '#/components/schemas/Event'
+      required:
+        - status
+        - partition
+        - offset
+        - event
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Сообщение об ошибке
+          example: "Internal Server Error"
+      required:
+        - error
