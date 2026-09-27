@@ -1,11 +1,12 @@
-## Изучите [README.md](.\README.md) файл и структуру проекта.
+## Изучите [README.md](.\README-правка.md) файл и структуру проекта.
 
 # Задание 1
 
 1. Спроектируйте to be архитектуру КиноБездны, разделив всю систему на отдельные домены и организовав интеграционное взаимодействие и единую точку вызова сервисов.
 Результат представьте в виде контейнерной диаграммы в нотации С4.
 Добавьте ссылку на файл в этот шаблон
-[ссылка на файл](ссылка)
+[c4_containers.puml](docs/architecture/to_be/c4_containers.puml)
+[c4_containers-MVP.puml](docs/architecture/as_is/c4_containers-MVP.puml)
 
 # Задание 2
 
@@ -46,6 +47,53 @@
    ```
 - Протестируйте постепенный переход, изменив переменную окружения MOVIES_MIGRATION_PERCENT в файле docker-compose.yml.
 
+#### Решение (Proxy / API Gateway)
+
+**Стек.** Сервис реализован на **Go** — том же языке, что и монолит и сервис `movies`, чтобы не вводить новую технологию в команду из пяти Go-разработчиков. Используется только стандартная библиотека (`net/http`, `net/http/httputil`), внешних зависимостей нет.
+
+**Архитектура.** Прокси — это **бесшовный (stateless) обратный прокси / API Gateway**: он не хранит никакого состояния и данных, а лишь маршрутизирует входящие запросы к бэкенд-сервисам. Файлы:
+- `src/microservices/proxy/main.go` — логика сервиса;
+- `src/microservices/proxy/go.mod` — модуль без зависимостей;
+- `src/microservices/proxy/Dockerfile` — многоэтапная сборка (golang → alpine), как у остальных сервисов.
+
+**Маршрутизация.**
+| Путь | Куда уходит | Примечание |
+|------|-------------|------------|
+| `/health` | сам прокси | health-check гейтвея, текст `Strangler Fig Proxy is healthy` |
+| `/api/movies` | монолит **или** movies-service | единственный маршрут с постепенной миграцией (Strangler Fig) |
+| `/api/events/*` | events-service | для проверки Kafka MVP через гейтвей |
+| всё остальное (`/api/users`, `/api/payments`, `/api/subscriptions`, …) | монолит | домен пока не вынесен |
+
+**Паттерн Strangler Fig + Feature Flag.** Переход трафика по домену `movies` управляется двумя переменными окружения:
+- `GRADUAL_MIGRATION` — простой фиче-флаг (вкл/выкл постепенного перехода);
+- `MOVIES_MIGRATION_PERCENT` — процент запросов, уходящих в новый сервис `movies-service`.
+
+Логика выбора бэкенда (`shouldRouteToMoviesService`):
+- если `GRADUAL_MIGRATION=false` → **100% монолит**;
+- если включено и `MOVIES_MIGRATION_PERCENT=0` → **100% монолит**;
+- если `MOVIES_MIGRATION_PERCENT=100` → **100% movies-service**;
+- иначе каждый запрос с вероятностью, равной проценту, уходит в `movies-service`, а остальные — в монолит (случайный выбор на запрос).
+
+Таким образом можно незаметно для пользователей «перетягивать» трафик с монолита на микросервис, меняя только значение процента и перезапуская контейнер прокси.
+
+**Наблюдаемость.** Каждый проксированный запрос логируется (`PROXY -> <метод> <url>`), а для `/api/movies` дополнительно пишется, какой бэкенд выбран (`MOVIES ROUTE -> monolith | movies-service`). Это позволяет визуально убедиться в распределении трафика.
+
+**Проверка.**
+1. `docker compose up --build -d` — поднимает весь стек.
+2. Postman-тесты: `cd tests/postman && npm install && npm run test:local`. Все тесты зелёные, **кроме** раздела *Events Microservice* (сервис ещё не реализован — это часть 2).
+3. Запрос к гейтвею: `curl http://localhost:8000/api/movies` — возвращает список фильмов.
+4. Постепенный переход: меняем `MOVIES_MIGRATION_PERCENT` в `docker-compose.yml` и перезапускаем прокси (`docker compose up -d proxy-service`), затем смотрим логи:
+   ```bash
+   docker logs cinemaabyss-proxy-service | grep "MOVIES ROUTE"
+   ```
+   - `0` → все запросы `-> monolith`;
+   - `50` → запросы чередуются между `monolith` и `movies-service`;
+   - `100` → все запросы `-> movies-service`.
+
+2026/09/27 13:04:02 MOVIES ROUTE -> movies-service (migration 50%)
+2026/09/27 13:04:02 PROXY -> GET http://movies-service:8081/api/movies
+2026/09/27 13:04:03 MOVIES ROUTE -> monolith
+2026/09/27 13:04:03 PROXY -> GET http://monolith:8080/api/movies
 
 ### 2. Kafka
  Вам как архитектуру нужно также проверить гипотезу насколько просто реализовать применение Kafka в данной архитектуре.

@@ -1,0 +1,57 @@
+@startuml
+title Cinemaabyss — C4 Container Diagram (To-Be MVP, Strangler Fig)
+
+top to bottom direction
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(user, "User", "Watches films and manages subscriptions on mobile, web or smart-TV")
+System_Ext(paymentProvider, "Payment provider", "External payment gateway for one-off payments and recurring subscriptions")
+System_Ext(streamsProvider, "External streams provider", "Third-party online cinemas / streaming content partners")
+System_Ext(recommendationsProvider, "Recommendations provider", "External recommendation engine that builds personalised film picks")
+
+System_Boundary(cinemaabyss, "Cinemaabyss") {
+  Container(app, "Client application", "Mobile / Web / Smart-TV", "Customer-facing UI; interfaces and data volume vary per device type")
+
+  Container(apiGateway, "API Gateway (Proxy)", "Go", "Single public entry point: authentication and routing between the monolith and extracted services; gradual traffic switch via feature flag (MOVIES_MIGRATION_PERCENT)")
+
+  Container(monolith, "Monolith", "Go", "Legacy core: users, payments, subscriptions and (until fully migrated) movie metadata")
+  Container(moviesService, "Movies service", "Go", "Extracted film-metadata domain: titles, descriptions, genres, actors and ratings")
+  Container(eventsService, "Events service", "Go", "Standalone Kafka MVP (hypothesis check): its own API produces User / Payment / Movie events to Kafka and consumes them back, logging the result. Not yet integrated with other services.")
+
+  ContainerDb(postgres, "Primary database", "PostgreSQL", "Shared during migration; Movies data is being split out into its own store")
+  ContainerDb(kafka, "Event broker", "Kafka", "Async event backbone (ESB): movie-events, user-events, payment-events topics")
+}
+
+Rel(user, app, "Uses")
+Rel(app, apiGateway, "HTTPS / JSON")
+
+Rel(apiGateway, monolith, "Users / payments / subscriptions API", "REST / HTTP")
+Rel(apiGateway, moviesService, "Movies API (gradual % via feature flag)", "REST / HTTP")
+
+note right of apiGateway
+  Single entry point (Strangler Fig facade).
+  With the feature flag on, a configurable percentage
+  of movie traffic is routed to the Movies service;
+  otherwise it goes to the monolith.
+end note
+
+Rel(monolith, postgres, "Reads / writes")
+Rel(moviesService, postgres, "Reads / writes (shared during migration)")
+
+' The Events service is a self-contained Kafka spike: it only talks to the broker.
+' It is called directly by clients (not via the gateway) and is not yet wired
+' into the monolith / movies flow — that integration is future work.
+Rel(eventsService, kafka, "Produces & consumes events (movie / user / payment)", "Kafka")
+
+note bottom of eventsService
+  MVP scope: prove Kafka fits the architecture.
+  A client calls its API -> it publishes an event to Kafka
+  and its own consumer reads it back and logs it.
+  Later this becomes the ESB between all services.
+end note
+
+Rel(monolith, paymentProvider, "Processes payments", "REST / HTTPS")
+Rel(moviesService, recommendationsProvider, "Requests film recommendations", "RabbitMQ")
+Rel(monolith, streamsProvider, "Aggregates external content", "REST / HTTPS")
+
+@enduml

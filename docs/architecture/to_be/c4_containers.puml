@@ -1,0 +1,62 @@
+@startuml
+title Cinemaabyss — C4 Container Diagram (To-Be, target state)
+
+top to bottom direction
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(user, "User", "Watches films and manages subscriptions on mobile, web or smart-TV")
+System_Ext(paymentProvider, "Payment provider", "External payment gateway for one-off payments and recurring subscriptions")
+System_Ext(streamsProvider, "External streams provider", "Third-party online cinemas / streaming content partners")
+System_Ext(recommendationsProvider, "Recommendations provider", "External recommendation engine that builds personalised film picks")
+System_Ext(notificationProvider, "Notification provider (optional)", "Push / SMS / email delivery; out of scope for the core migration, added for everyday operations")
+
+System_Boundary(cinemaabyss, "Cinemaabyss") {
+  Container(app, "Client application", "Mobile / Web / Smart-TV", "Customer-facing UI; interfaces and data volume vary per device type")
+
+  Container(apiGateway, "API Gateway", "Go", "Single public entry point: authentication, rate limiting and routing to domain services; no business logic")
+
+  Container(userService, "User service", "Go", "Identity, profiles, roles and signed access tokens")
+  ContainerDb(userDb, "User database", "PostgreSQL", "Users, profiles, roles and entitlement projection")
+
+  Container(billingService, "Billing service", "Go", "Paid module catalogue, subscriptions, payments and entitlement activation")
+  ContainerDb(billingDb, "Billing database", "PostgreSQL", "Products, subscriptions, payments and entitlements")
+
+  Container(moviesService, "Movies service", "Go", "Film metadata: titles, descriptions, genres, actors and ratings")
+  ContainerDb(moviesDb, "Movies database", "PostgreSQL", "Film metadata, genres, actors and user ratings")
+
+  Container(streamingService, "Streaming service", "Go", "Content delivery orchestration and integration with external streaming partners")
+  ContainerDb(streamingDb, "Streaming database", "PostgreSQL", "Stream sources, partner mappings and playback state")
+
+  Container(eventsService, "Events service", "Go", "Event-driven integration layer: produces and consumes domain events across services")
+  ContainerDb(kafka, "Event broker", "Kafka", "Async event backbone (ESB): movie, user and payment events")
+}
+
+Rel(user, app, "Uses")
+Rel(app, apiGateway, "HTTPS / JSON")
+
+Rel(apiGateway, userService, "Identity & profile API", "REST / HTTPS")
+Rel(apiGateway, billingService, "Billing & subscriptions API", "REST / HTTPS")
+Rel(apiGateway, moviesService, "Movies API", "REST / HTTPS")
+Rel(apiGateway, streamingService, "Streaming API", "REST / HTTPS")
+
+note right of apiGateway
+  Gateway verifies signed access tokens
+  and forwards the authenticated user.
+end note
+
+Rel(userService, userDb, "Reads / writes")
+Rel(billingService, billingDb, "Reads / writes")
+Rel(moviesService, moviesDb, "Reads / writes")
+Rel(streamingService, streamingDb, "Reads / writes")
+
+Rel(eventsService, kafka, "Produces / consumes events", "Kafka")
+Rel(userService, eventsService, "User events", "via Kafka")
+Rel(billingService, eventsService, "Payment & entitlement events", "via Kafka")
+Rel(moviesService, eventsService, "Movie events", "via Kafka")
+
+Rel(billingService, paymentProvider, "Processes payments", "REST / HTTPS")
+Rel(moviesService, recommendationsProvider, "Requests film recommendations", "RabbitMQ")
+Rel(streamingService, streamsProvider, "Fetches external content", "REST / HTTPS")
+Rel(userService, notificationProvider, "Sends notifications (optional)", "HTTPS / push")
+
+@enduml
