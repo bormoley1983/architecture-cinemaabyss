@@ -107,6 +107,38 @@
 Необходимые тесты для проверки этого API вызываются при запуске npm run test:local из папки tests/postman 
 Приложите скриншот тестов и скриншот состояния топиков Kafka из UI http://localhost:8090 
 
+#### Решение (Events / Kafka MVP)
+
+Сервис реализован на Go (тот же стек, что и остальные микросервисы) и одновременно является **producer'ом** и **consumer'ом**: по вызову API он публикует событие в нужный топик Kafka, а фоновые consumer'ы читают сообщения из тех же топиков и пишут их в лог. Так проверяется гипотеза о простоте внедрения Kafka: сервис сам создаёт и сам читает свои события.
+
+**Файлы:**
+- `src/microservices/events/main.go` — логика сервиса (producer + consumer);
+- `src/microservices/events/go.mod` / `go.sum` — зависимости: `segmentio/kafka-go`, `google/uuid`;
+- `src/microservices/events/Dockerfile` — многоэтапная сборка (golang → alpine), как у остальных сервисов.
+
+**API:**
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| GET  | `/api/events/health` | health-check, возвращает `{"status":true}` |
+| POST | `/api/events/movie`   | создаёт событие Movie → топик `movie-events` |
+| POST | `/api/events/user`    | создаёт событие User → топик `user-events` |
+| POST | `/api/events/payment` | создаёт событие Payment → топик `payment-events` |
+
+Каждый `POST` возвращает `201` с телом `{"status":"success","event":{...}}`, где `event` содержит сгенерированный UUID, тип, время и payload. Событие сериализуется в JSON и публикуется в Kafka (producer). Параллельно три consumer'а (по одному на топик, group id `events-service`) читают сообщения и логируют их: `CONSUMED event from topic=... type=... id=... payload=...`.
+
+**docker-compose.** Добавлен сервис `events-service` (порт `8082`, переменные `PORT` и `KAFKA_BROKERS=kafka:9092`), а в `depends_on` прокси раскомментирована зависимость от него. Kafka и топик уже были настроены ранее (`KAFKA_CREATE_TOPICS`).
+
+**Проверка.**
+1. Логи сервиса показывают полный цикл produce → consume для каждого типа события:
+   ```
+   PRODUCED event type=movie id=423754f7-... topic=movie-events
+   CONSUMED event from topic=movie-events partition=0 offset=0 | type=movie id=423754f7-... payload={...}
+   ```
+2. Postman-тесты: `cd tests/postman && npm run test:local`. Раздел *Events Microservice* полностью рабочий (health + movie/user/payment events).
+
+> Примечание: в тестах события используют переменные `{{userId}}`/`{{paymentId}}`, которые заполняются предыдущими запросами к монолиту. Чтобы раздел Events работал и по отдельности, этим collection-переменным заданы значения по умолчанию (`1`). Оставшиеся падения в разделе *Monolith Service* (Subscription) — предсуществующие и не связаны с events.
+
 # Задание 3
 
 Команда начала переезд в Kubernetes для лучшего масштабирования и повышения надежности. 
