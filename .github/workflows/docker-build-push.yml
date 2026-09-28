@@ -193,10 +193,12 @@ jobs:
 
           # The test-runner container joins the compose network so it can
           # resolve service names (monolith, movies-service, ...) used by
-          # docker.environment.json.
+          # docker.environment.json. The source dir is mounted read-write (not
+          # :ro) so Docker can create the /app/reports mountpoint for the
+          # reports volume; only the JUnit XML is written there.
           docker run --rm \
             --network cinemaabyss-network \
-            -v "$(pwd)/tests/postman:/app:ro" \
+            -v "$(pwd)/tests/postman:/app" \
             -v "$(pwd)/reports:/app/reports" \
             -w /app \
             cinemaabyss-api-tests \

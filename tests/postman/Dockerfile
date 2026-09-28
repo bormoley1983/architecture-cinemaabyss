@@ -15,8 +15,10 @@ RUN npm install --no-audit --no-fund \
       yargs@^17.6.2 \
       newman-reporter-junitfull@^1.1.1
 
-# Report output directory (mounted as a volume in CI).
-RUN mkdir -p /app/reports
+# NOTE: /app/reports is intentionally NOT created here. In CI the source dir
+# is bind-mounted over /app and a separate volume is mounted at /app/reports;
+# Docker creates that mountpoint for us. Pre-creating it would be shadowed by
+# the bind mount anyway.
 
 # Default command - can be overridden at runtime.
 ENTRYPOINT ["node", "run-tests.js"]
