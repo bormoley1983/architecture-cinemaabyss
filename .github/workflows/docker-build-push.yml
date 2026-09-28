@@ -62,8 +62,6 @@ jobs:
           push: true
           tags: ${{ steps.meta-monolith.outputs.tags }}
           labels: ${{ steps.meta-monolith.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Extract metadata (tags, labels) for Movies Service
         id: meta-movies
@@ -84,8 +82,6 @@ jobs:
           push: true
           tags: ${{ steps.meta-movies.outputs.tags }}
           labels: ${{ steps.meta-movies.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Extract metadata (tags, labels) for Events Service
         id: meta-events
@@ -106,8 +102,6 @@ jobs:
           push: true
           tags: ${{ steps.meta-events.outputs.tags }}
           labels: ${{ steps.meta-events.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Extract metadata (tags, labels) for Proxy Service
         id: meta-proxy
@@ -128,8 +122,6 @@ jobs:
           push: true
           tags: ${{ steps.meta-proxy.outputs.tags }}
           labels: ${{ steps.meta-proxy.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   # ---------------------------------------------------------------------------
   # API tests: bring up the full docker-compose stack (postgres, kafka, all
