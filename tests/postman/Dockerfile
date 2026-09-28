@@ -1,9 +1,9 @@
 # Test-runner image for the CinemaAbyss API test suite (Newman).
 #
-# Self-contained: newman + reporters are baked in, so the same image works
-# locally and in CI without any host-side npm install. The collection,
-# environment files and run-tests.js are mounted at runtime (see the CI
-# workflow), which keeps the image small and always in sync with the repo.
+# Self-contained: newman + reporters AND the collection/environment files are
+# baked in, so the same image works locally and in CI without any host-side
+# npm install or source bind mount. Baking the files in (rather than mounting
+# them) avoids shadowing /app/node_modules when a volume is mounted at /app.
 FROM node:18-alpine
 
 WORKDIR /app
@@ -15,11 +15,12 @@ RUN npm install --no-audit --no-fund \
       yargs@^17.6.2 \
       newman-reporter-junitfull@^1.1.1
 
-# NOTE: /app/reports is intentionally NOT created here. In CI the source dir
-# is bind-mounted over /app and a separate volume is mounted at /app/reports;
-# Docker creates that mountpoint for us. Pre-creating it would be shadowed by
-# the bind mount anyway.
+# Bake in the test assets (runner script, collection, environment files).
+COPY run-tests.js ./
+COPY *.postman_collection.json ./
+COPY *.environment.json ./
 
-# Default command - can be overridden at runtime.
+# Default command - can be overridden at runtime. Only /app/reports is mounted
+# at run time (for the JUnit artifact); everything else lives in the image.
 ENTRYPOINT ["node", "run-tests.js"]
 CMD ["--environment", "docker"]
