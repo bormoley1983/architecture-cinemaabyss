@@ -352,8 +352,91 @@ cat .docker/config.json | base64
   Часть тестов с health-чек упадет, но создание событий отработает.
   Откройте логи event-service и сделайте скриншот обработки событий
 
+#### Решение (Proxy в Kubernetes)
+
+**Кластер.** В качестве локального кластера использован **встроенный Kubernetes Docker Desktop** (контекст `docker-desktop`, нода `desktop-control-plane`, K8s v1.36). Это позволило не поднимать отдельную виртуалку minikube и использовать уже настроенный Docker-демон для сборки/пуша образов в GHCR.
+
+**Последовательность деплоя.** Все манифесты лежат в `src/kubernetes/` и применяются в следующем порядке (namespace `cinemaabyss`):
+
+1. `namespace.yaml` — пространство имён;
+2. `configmap.yaml`, `secret.yaml`, `dockerconfigsecret.yaml`, `postgres-init-configmap.yaml` — конфигурация, секреты БД и секрет аутентификации в GHCR (`kubernetes.io/dockerconfigjson`);
+3. `postgres.yaml` — база данных (StatefulSet + PVC);
+4. `kafka/kafka.yaml` — брокер Kafka;
+5. `monolith.yaml` — монолит;
+6. `movies-service.yaml`, `events-service.yaml` — микросервисы;
+7. `proxy-service.yaml` — прокси / API Gateway;
+8. ingress-контроллер + `ingress.yaml` — маршрутизация внешнего трафика.
+
+После поднятия всех подов:
+
+```bash
+kubectl -n cinemaabyss get pod
+# events-service-...   1/1  Running
+# kafka-0              1/1  Running
+# monolith-...         1/1  Running
+# movies-service-...   1/1  Running
+# postgres-0           1/1  Running
+# proxy-service-...    1/1  Running
+```
+
+**Kafka: переход на KRaft.** В исходном варианте Kafka поднималась вместе с Zookeeper (`wurstmeister/zookeeper`). На практике старый JVM-агент Zookeeper игнорировал лимиты памяти контейнера и постоянно убивался OOMKilled (exit 137), а актуальные образы Bitnami больше не публикуются в Docker Hub. Поэтому брокер переведён на **KRaft-режим** без Zookeeper: один StatefulSet `kafka` (образ `apache/kafka:3.7.0`) одновременно выполняет роли `broker,controller`. Ключевые переменные:
+
+```yaml
+KAFKA_NODE_ID: "1"
+KAFKA_PROCESS_ROLES: "broker,controller"
+KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093"   # один узел => localhost
+KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+```
+
+Важный нюанс: Service `kafka` обязан открывать **оба** порта — `9092` (broker) и `9093` (controller). Без порта 9093 брокер не может зарегистрироваться в кворуме (`Connection to node 1 ... could not be established`). Топики `movie-events`, `user-events`, `payment-events` создаются вручную через `kafka-topics.sh`.
+
+**Приватный реестр GHCR.** Образы лежат в приватном пакете `ghcr.io/bormoley1983/architecture-cinemaabyss/*:latest`. Для их получения в кластере создан секрет типа `kubernetes.io/dockerconfigjson` (`dockerconfigsecret.yaml`, значение — base64 от `~/.docker/config.json` с заполненным `auth` для `ghcr.io`). Все Deployment'ы ссылаются на него через `imagePullSecrets`.
+
+**Ingress.** Установлен **nginx ingress controller** (в namespace `ingress-nginx`). Манифест из репозитория ingress-nginx зафиксировал устаревший образ v0.41.2, несовместимый с K8s 1.36 (использует удалённый API `networking.k8s.io/v1beta1`), поэтому образ обновлён до `v1.12.1`, а ClusterRole дополнен актуальными правами (endpointslices, leases, ingresses). Правило маршрутизации описано в `src/kubernetes/ingress.yaml`:
+
+| Путь | Куда уходит |
+|------|-------------|
+| `/api/events` (Prefix) | `events-service:8082` |
+| `/` (Prefix) | `proxy-service:8000` |
+
+Хост — `cinemaabyss.example.com`. Так как в Docker Desktop нет LoadBalancer, внешний доступ обеспечивается через **port-forward** на ingress-контроллер:
+
+```bash
+# hosts: 127.0.0.1 cinemaabyss.example.com
+kubectl -n ingress-nginx port-forward svc/ingress-nginx-controller 80:80
+curl.exe http://cinemaabyss.example.com/api/movies
+```
+
+Запрос проходит полный путь **ingress → proxy-service → movies-service** и возвращает список фильмов.
+
+**Постепенная миграция (Strangler Fig) в Kubernetes.** Процент миграции управляется переменной `MOVIES_MIGRATION_PERCENT` в ConfigMap `cinemaabyss-config`. Важно: pod «снимает» значения ConfigMap **в момент создания**, поэтому после изменения ConfigMap требуется `rollout restart` прокси (при гонке patch/restart — повторный restart). Эксперимент с `MOVIES_MIGRATION_PERCENT=50` показал, что запросы `/api/movies` распределяются между монолитом и movies-service примерно поровну:
+
+```
+MOVIES ROUTE -> movies-service (migration 50%)   PROXY -> GET http://movies-service:8081/api/movies
+MOVIES ROUTE -> monolith                          PROXY -> GET http://monolith:8080/api/movies
+MOVIES ROUTE -> movies-service (migration 50%)   PROXY -> GET http://movies-service:8081/api/movies
+...
+```
+
+При `100` все запросы уходят в новый сервис, при `0` — в монолит. Это подтверждает бесшовность переключения трафика без простоя.
+
+**Тесты.** Запущен `npm run test:kubernetes` (22 запроса). Все HTTP-запросы отработали успешно; упали только 2 ассерции health-check'а movies-service (эндпоинт `/health` не реализован — ожидаемо по условию задания). **Создание событий отработало полностью**: в логах events-service виден цикл produce → consume для всех трёх типов событий.
+
 #### Шаг 3
-Добавьте сюда скриншота вывода при вызове https://cinemaabyss.example.com/api/movies и  скриншот вывода event-service после вызова тестов.
+
+Вывод при вызове `https://cinemaabyss.example.com/api/movies` (полный путь ingress → proxy → movies-service):
+
+![movies-over-proxy](docs/temp/movies-over-proxy.png)
+
+Логи event-service после прогона тестов — создание и обработка событий в Kafka:
+
+![strangler-fig-routing](docs/temp/strangler-fig-routing.png)
+
+Состояние активных топиков Kafka:
+
+![topics-active-evidence](docs/temp/topics-active-evidence.png)
 
 
 # Задание 4

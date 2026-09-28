@@ -11,8 +11,18 @@ spec:
     - host: cinemaabyss.example.com
       http:
         paths:
-          #дополните конфигурацию для /
-          ...
+          # All traffic enters through the Strangler Fig proxy (API Gateway).
+          # The proxy routes /api/movies to monolith or movies-service based on
+          # MOVIES_MIGRATION_PERCENT, and everything else to the monolith.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: proxy-service
+                port:
+                  number: 8000
+          # Direct access to the events microservice (longest prefix wins over /),
+          # so the Postman tests can verify event creation without the gateway.
           - path: /api/events
             pathType: Prefix
             backend:
