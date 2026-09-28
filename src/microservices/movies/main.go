@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -53,11 +54,20 @@ func initDB() {
 		log.Fatal(err)
 	}
 
-	err = db.Ping()
-	if err != nil {
-		log.Fatal(err)
+	// Postgres may not be accepting connections yet when this service starts
+	// (e.g. in CI the whole compose stack comes up at once). Retry the ping
+	// instead of exiting so the container stays alive until the DB is ready.
+	const maxAttempts = 30
+	const retryDelay = 2 * time.Second
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if err = db.Ping(); err == nil {
+			log.Println("Successfully connected to database")
+			return
+		}
+		log.Printf("Waiting for database (attempt %d/%d): %v", attempt, maxAttempts, err)
+		time.Sleep(retryDelay)
 	}
-	log.Println("Successfully connected to database")
+	log.Fatalf("could not connect to database after %d attempts: %v", maxAttempts, err)
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
