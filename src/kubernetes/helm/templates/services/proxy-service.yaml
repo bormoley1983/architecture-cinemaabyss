@@ -25,7 +25,35 @@ spec:
     spec:
       containers:
       - name: proxy-service
-        ..... тут
+        image: {{ .Values.proxyService.image.repository }}:{{ .Values.proxyService.image.tag }}
+        imagePullPolicy: {{ .Values.proxyService.image.pullPolicy }}
+        ports:
+        - containerPort: {{ .Values.proxyService.service.targetPort }}
+        env:
+        - name: PORT
+          value: "{{ .Values.proxyService.service.targetPort }}"
+        # The configmap already contains MONOLITH_URL and MOVIES_SERVICE_URL;
+        # EVENTS_SERVICE_URL is provided via envFrom (cinemaabyss-config).
+        envFrom:
+        - configMapRef:
+            name: cinemaabyss-config
+        resources:
+          {{- toYaml .Values.proxyService.resources | nindent 10 }}
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.proxyService.service.targetPort }}
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.proxyService.service.targetPort }}
+          initialDelaySeconds: 15
+          periodSeconds: 20
+      restartPolicy: Always
+      imagePullSecrets:
+        - name: dockerconfigjson
 ---
 apiVersion: v1
 kind: Service
@@ -38,5 +66,9 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   selector:
-    ... и тут
+    app: proxy-service
+  ports:
+  - port: {{ .Values.proxyService.service.port }}
+    targetPort: {{ .Values.proxyService.service.targetPort }}
+  type: {{ .Values.proxyService.service.type }}
 {{- end }}

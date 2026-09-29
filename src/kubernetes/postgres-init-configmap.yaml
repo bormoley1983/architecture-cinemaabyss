@@ -89,10 +89,10 @@ data:
     -- Insert some sample data
 
     -- Sample users
-    INSERT INTO users (username, email) VALUES
-        ('user1', 'user1@example.com'),
-        ('user2', 'user2@example.com'),
-        ('user3', 'user3@example.com')
+    INSERT INTO users (username, email, password_hash) VALUES
+        ('user1', 'user1@example.com', '$2b$10$samplehashuser1samplehashuser1sa'),
+        ('user2', 'user2@example.com', '$2b$10$samplehashuser2samplehashuser2sa'),
+        ('user3', 'user3@example.com', '$2b$10$samplehashuser3samplehashuser3sa')
     ON CONFLICT (username) DO NOTHING;
 
     -- Sample movies
@@ -119,10 +119,10 @@ data:
     ON CONFLICT (movie_id, genre) DO NOTHING;
 
     -- Sample payments
-    INSERT INTO payments (user_id, amount) VALUES
-        (1, 9.99),
-        (2, 14.99),
-        (3, 19.99)
+    INSERT INTO payments (user_id, amount, payment_method) VALUES
+        (1, 9.99, 'card'),
+        (2, 14.99, 'card'),
+        (3, 19.99, 'paypal')
     ON CONFLICT (id) DO NOTHING;
 
     -- Sample subscriptions

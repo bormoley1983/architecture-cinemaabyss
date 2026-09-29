@@ -1,89 +1,5 @@
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: zookeeper
-  namespace: cinemaabyss
-  labels:
-    app: zookeeper
-spec:
-  ports:
-  - port: 2181
-    name: client
-  - port: 2888
-    name: server
-  - port: 3888
-    name: leader-election
-  selector:
-    app: zookeeper
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: zookeeper-data
-  namespace: cinemaabyss
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: zookeeper
-  namespace: cinemaabyss
-spec:
-  serviceName: zookeeper
-  replicas: 1
-  selector:
-    matchLabels:
-      app: zookeeper
-  template:
-    metadata:
-      labels:
-        app: zookeeper
-    spec:
-      containers:
-      - name: zookeeper
-        image: wurstmeister/zookeeper
-        ports:
-        - containerPort: 2181
-          name: client
-        - containerPort: 2888
-          name: server
-        - containerPort: 3888
-          name: leader-election
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        env:
-        - name: ZOOKEEPER_CLIENT_PORT
-          value: "2181"
-        - name: ZOOKEEPER_TICK_TIME
-          value: "2000"
-        volumeMounts:
-        - name: zookeeper-data
-          mountPath: /var/lib/zookeeper/data
-        readinessProbe:
-          tcpSocket:
-            port: 2181
-          initialDelaySeconds: 10
-          periodSeconds: 10
-        livenessProbe:
-          tcpSocket:
-            port: 2181
-          initialDelaySeconds: 30
-          periodSeconds: 15
-      volumes:
-      - name: zookeeper-data
-        persistentVolumeClaim:
-          claimName: zookeeper-data
+# Kafka in KRaft mode (no Zookeeper required).
+# Single-node standalone broker using the official Apache image.
 ---
 apiVersion: v1
 kind: Service
@@ -96,6 +12,8 @@ spec:
   ports:
   - port: 9092
     name: kafka
+  - port: 9093
+    name: controller
   selector:
     app: kafka
 ---
@@ -129,37 +47,55 @@ spec:
     spec:
       containers:
       - name: kafka
-        image: wurstmeister/kafka:2.13-2.7.0
+        image: apache/kafka:3.7.0
         ports:
         - containerPort: 9092
           name: kafka
+        - containerPort: 9093
+          name: controller
         resources:
           requests:
-            memory: "512Mi"
+            memory: "1Gi"
             cpu: "200m"
           limits:
-            memory: "1Gi"
+            memory: "2Gi"
             cpu: "1000m"
         env:
-        - name: KAFKA_ADVERTISED_LISTENERS
-          value: PLAINTEXT://kafka:9092
+        # KRaft standalone mode (controller + broker in one process).
+        - name: KAFKA_NODE_ID
+          value: "1"
+        - name: KAFKA_PROCESS_ROLES
+          value: "broker,controller"
+        # Single node: controller quorum uses localhost (same process).
+        - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+          value: "1@localhost:9093"
         - name: KAFKA_LISTENERS
-          value: PLAINTEXT://0.0.0.0:9092
-        - name: KAFKA_PORT
-          value: "9092"
-        - name: KAFKA_ZOOKEEPER_CONNECT
-          value: zookeeper:2181
-        - name: KAFKA_CREATE_TOPICS
-          value: "movie-events:1:1,user-events:1:1,payment-events:1:1"
+          value: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+        - name: KAFKA_ADVERTISED_LISTENERS
+          value: "PLAINTEXT://kafka:9092"
+        - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+          value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+        - name: KAFKA_INTER_BROKER_LISTENER_NAME
+          value: "PLAINTEXT"
+        - name: KAFKA_CONTROLLER_LISTENER_NAMES
+          value: "CONTROLLER"
+        # Storage & replication (single node => factor 1).
+        - name: KAFKA_LOG_DIRS
+          value: "/var/lib/kafka/data"
+        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+          value: "1"
+        - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+          value: "1"
+        - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+          value: "1"
         - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
           value: "true"
-        - name: KAFKA_BROKER_ID
-          value: "1"
-        - name: KAFKA_LOG_DIRS
-          value: "/kafka/kafka-logs"
+        # JVM heap cap (well under the 2Gi limit).
+        - name: KAFKA_HEAP_OPTS
+          value: "-Xmx1G -Xms1G"
         volumeMounts:
         - name: kafka-data
-          mountPath: /kafka
+          mountPath: /var/lib/kafka/data
         readinessProbe:
           tcpSocket:
             port: 9092

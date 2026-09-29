@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
-    image: postgres:14
+    image: postgres:16-alpine
     container_name: cinemaabyss-postgres
     environment:
       POSTGRES_USER: postgres
@@ -12,7 +10,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
       - ./src/database/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -82,7 +80,7 @@ services:
     networks:
       - cinemaabyss-network
 
-  # Events Microservice
+  # Events Microservice (Kafka producer + consumer)
   events-service:
     build:
       context: ./src/microservices/events
@@ -137,7 +135,8 @@ services:
       - cinemaabyss-network
 
 volumes:
-  postgres-data:
+  postgres_data:
+    name: cinemaabyss_postgres_data
 
 networks:
   cinemaabyss-network:

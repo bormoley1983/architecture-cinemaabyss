@@ -1,12 +1,17 @@
 name: Docker Build and Push
 
+# CI/CD strategy (merge gate):
+#   - push to cinema  -> no pipeline (fast iteration branch)
+#   - PR into main    -> full build + push to GHCR + API tests (quality gate)
+#   - merge to main   -> rebuild & push final images (release: published covers
+#                        tag-based releases; the post-merge push re-tags :latest)
+#   - workflow_dispatch -> manual run for debugging
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [ main ]
   push:
     branches: [ main ]
-    paths:
-      - 'src/**'
-      - '.github/workflows/docker-build-push.yml'
   release:
     types: [published]
 
@@ -26,13 +31,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -51,7 +56,7 @@ jobs:
             latest
 
       - name: Build and push Monolith Docker image
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           context: ./src/monolith
           push: true
@@ -73,7 +78,7 @@ jobs:
             latest
 
       - name: Build and push Movies Service Docker image
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           context: ./src/microservices/movies
           push: true
@@ -81,5 +86,132 @@ jobs:
           labels: ${{ steps.meta-movies.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Extract metadata (tags, labels) for Events Service
+        id: meta-events
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.EVENTS_SERVICE_IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+            type=ref,event=branch
+            latest
+
+      - name: Build and push Events Service Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./src/microservices/events
+          push: true
+          tags: ${{ steps.meta-events.outputs.tags }}
+          labels: ${{ steps.meta-events.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata (tags, labels) for Proxy Service
+        id: meta-proxy
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.PROXY_SERVICE_IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+            type=ref,event=branch
+            latest
+
+      - name: Build and push Proxy Service Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./src/microservices/proxy
+          push: true
+          tags: ${{ steps.meta-proxy.outputs.tags }}
+          labels: ${{ steps.meta-proxy.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------------
+  # API tests: bring up the full docker-compose stack (postgres, kafka, all
+  # services), wait until every service is healthy, then run the Newman
+  # collection from a dedicated test-runner container attached to the compose
+  # network. The "docker" environment file uses container DNS names
+  # (monolith:8080, proxy-service:8000, ...), so the runner must live inside
+  # that network.
+  # ---------------------------------------------------------------------------
+  api-tests:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Start services with Docker Compose
+        run: |
+          docker compose up -d --build
+          echo "Compose stack started:"
+          docker compose ps
+
+      - name: Wait for services to be healthy
+        run: |
+          set -euo pipefail
+
+          # Bounded retry loop: poll each endpoint until it answers 200.
+          wait_for() {
+            local name="$1" url="$2" attempts="${3:-45}"
+            echo "Waiting for ${name} at ${url} ..."
+            for i in $(seq 1 "${attempts}"); do
+              if curl -sf -o /dev/null "${url}"; then
+                echo "${name} is up (attempt ${i})"
+                return 0
+              fi
+              sleep 2
+            done
+            echo "ERROR: ${name} did not become healthy in time" >&2
+            docker compose logs --no-color || true
+            return 1
+          }
+
+          wait_for "postgres (via monolith health)" "http://localhost:8080/health"
+          wait_for "movies-service"        "http://localhost:8081/api/movies/health"
+          wait_for "events-service"        "http://localhost:8082/api/events/health"
+          wait_for "proxy-service"         "http://localhost:8000/health"
+
+          # Kafka has no health endpoint; give the broker a moment to finish
+          # initializing after events-service connected.
+          echo "Settling time for Kafka ..."
+          sleep 10
+
+      - name: Build API test runner image
+        run: docker build -t cinemaabyss-api-tests ./tests/postman
+
+      - name: Run API tests (Newman) in compose network
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+
+          # The test-runner container joins the compose network so it can
+          # resolve service names (monolith, movies-service, ...) used by
+          # docker.environment.json. All test assets are baked into the image;
+          # only /app/reports is mounted, to capture the JUnit artifact.
+          docker run --rm \
+            --network cinemaabyss-network \
+            -v "$(pwd)/reports:/app/reports" \
+            -w /app \
+            cinemaabyss-api-tests \
+            node run-tests.js --environment docker --reporters cli,junit
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-test-reports
+          path: reports/
+          retention-days: 14
+
+      - name: Stop services
+        if: always()
+        run: docker compose down --remove-orphans
 
       

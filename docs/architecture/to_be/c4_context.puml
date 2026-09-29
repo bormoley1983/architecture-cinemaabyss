@@ -1,0 +1,20 @@
+@startuml
+title Cinemaabyss — C4 System Context Diagram (To-Be)
+
+top to bottom direction
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+Person(user, "User", "Watches films and manages subscriptions on mobile, web or smart-TV")
+
+System(cinemaabyss, "Cinemaabyss", "Online cinema aggregator: film catalogue and metadata, subscriptions and payments, content streaming from partner sources, personalised recommendations")
+
+System_Ext(paymentProvider, "Payment provider", "External payment gateway for one-off payments and recurring subscriptions")
+System_Ext(streamsProvider, "External streams provider", "Third-party online cinemas / streaming content partners")
+System_Ext(recommendationsProvider, "Recommendations provider", "External recommendation engine that builds personalised film picks")
+
+Rel(user, cinemaabyss, "Browses films, rates them and manages subscriptions", "HTTPS / JSON")
+Rel(cinemaabyss, paymentProvider, "Processes payments and subscription charges", "REST / HTTPS")
+Rel(cinemaabyss, streamsProvider, "Aggregates external streaming content", "REST / HTTPS")
+Rel(cinemaabyss, recommendationsProvider, "Requests personalised film recommendations", "RabbitMQ")
+
+@enduml
