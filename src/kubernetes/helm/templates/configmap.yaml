@@ -13,10 +13,11 @@ data:
   DB_NAME: {{ .Values.database.name | quote }}
   DB_USER: {{ .Values.database.user | quote }}
 
-  # Service URLs
+  # Service URLs (must match the Service names created by this chart)
   MONOLITH_URL: "http://monolith:{{ .Values.monolith.service.port }}"
-  MOVIES_SERVICE_URL: "http://movies:{{ .Values.moviesService.service.port }}"
-  
+  MOVIES_SERVICE_URL: "http://movies-service:{{ .Values.moviesService.service.port }}"
+  EVENTS_SERVICE_URL: "http://events-service:{{ .Values.eventsService.service.port }}"
+
   # Strangler Fig configuration
   GRADUAL_MIGRATION: {{ .Values.config.gradualMigration | quote }}
   MOVIES_MIGRATION_PERCENT: {{ .Values.config.moviesMigrationPercent | quote }}

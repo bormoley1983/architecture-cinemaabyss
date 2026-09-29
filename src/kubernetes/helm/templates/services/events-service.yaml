@@ -23,9 +23,59 @@ spec:
       labels:
         app: events-service
     spec:
+      # Readiness gate: block the main container until Kafka's group
+      # coordinator is fully operational (offsets topic created, broker
+      # accepting group-management requests). Without this the consumer
+      # loops on "Group Coordinator Not Available" during KRaft startup.
+      initContainers:
+      - name: wait-for-kafka
+        image: {{ .Values.kafka.image.repository }}:{{ .Values.kafka.image.tag }}
+        imagePullPolicy: {{ .Values.kafka.image.pullPolicy }}
+        command:
+        - /bin/bash
+        - -c
+        - |
+          echo "Waiting for Kafka group coordinator to become ready..."
+          for i in $(seq 1 60); do
+            if /opt/kafka/bin/kafka-consumer-groups.sh \
+                 --bootstrap-server kafka:9092 --list >/dev/null 2>&1; then
+              echo "Kafka is ready (attempt $i)."
+              exit 0
+            fi
+            echo "Attempt $i/60: Kafka not ready yet, retrying in 5s..."
+            sleep 5
+          done
+          echo "ERROR: Kafka did not become ready within 300s." >&2
+          exit 1
       containers:
       - name: events-service
-       .... тут
+        image: {{ .Values.eventsService.image.repository }}:{{ .Values.eventsService.image.tag }}
+        imagePullPolicy: {{ .Values.eventsService.image.pullPolicy }}
+        ports:
+        - containerPort: {{ .Values.eventsService.service.targetPort }}
+        env:
+        - name: PORT
+          value: "{{ .Values.eventsService.service.targetPort }}"
+        # Kafka is reachable inside the cluster via its ClusterIP service.
+        - name: KAFKA_BROKERS
+          value: "kafka:9092"
+        resources:
+          {{- toYaml .Values.eventsService.resources | nindent 10 }}
+        readinessProbe:
+          httpGet:
+            path: /api/events/health
+            port: {{ .Values.eventsService.service.targetPort }}
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/events/health
+            port: {{ .Values.eventsService.service.targetPort }}
+          initialDelaySeconds: 15
+          periodSeconds: 20
+      restartPolicy: Always
+      imagePullSecrets:
+        - name: dockerconfigjson
 ---
 apiVersion: v1
 kind: Service
@@ -37,5 +87,10 @@ metadata:
     app.kubernetes.io/name: {{ include "cinemaabyss.name" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
- ........ и тут
+  selector:
+    app: events-service
+  ports:
+  - port: {{ .Values.eventsService.service.port }}
+    targetPort: {{ .Values.eventsService.service.targetPort }}
+  type: {{ .Values.eventsService.service.type }}
 {{- end }}

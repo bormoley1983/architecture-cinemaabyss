@@ -148,7 +148,11 @@ func main() {
 	})
 
 	// Movies domain: the only route that participates in the gradual migration.
+	// Two patterns are needed because Go's ServeMux treats them differently:
+	//   "/api/movies"  – exact match (GET /api/movies, POST /api/movies)
+	//   "/api/movies/" – subtree match (GET /api/movies/health, etc.)
 	http.HandleFunc("/api/movies", moviesHandler(cfg, monolithProxy, moviesProxy))
+	http.HandleFunc("/api/movies/", moviesHandler(cfg, monolithProxy, moviesProxy))
 
 	// Everything else (users, payments, subscriptions, events, ...) is still
 	// owned by the monolith and is forwarded as-is. The /api/events prefix is

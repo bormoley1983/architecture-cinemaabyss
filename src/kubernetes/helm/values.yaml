@@ -3,15 +3,16 @@ global:
   namespace: cinemaabyss
   domain: cinemaabyss.example.com
 
-# Image pull secrets
+# Image pull secrets (base64 of {"auths":{"ghcr.io":{"auth":"<user:token in base64>"}}})
 imagePullSecrets:
-  dockerconfigjson: ewoJImF1dGhzIjogewoJCSJnaGNyLmlvIjogewoJCQkiYXV0aCI6
+  dockerconfigjson: eyJhdXRocyI6eyJnaGNyLmlvIjp7ImF1dGgiOiJZbTl5Ylc5c1pYa3hPVGd6T21kb2NGOTRlR2RqZDJKb1FWbDJkRWxPTVVGTFR6WTNZWGN3Y0RGTloxWm5ORTB3Wm5aS1lrUT0ifX19
 # Database configuration
 database:
   host: postgres
   port: 5432
   name: cinemaabyss
   user: postgres
+  # base64 of "postgres_password" (Secret data must be base64)
   password: cG9zdGdyZXNfcGFzc3dvcmQ=
   image:
     repository: postgres
@@ -33,7 +34,7 @@ database:
 monolith:
   enabled: true
   image:
-    repository: ghcr.io/db-exp/cinemaabysstest/monolith
+    repository: ghcr.io/bormoley1983/architecture-cinemaabyss/monolith
     tag: latest
     pullPolicy: Always
   replicas: 1
@@ -53,7 +54,7 @@ monolith:
 proxyService:
   enabled: true
   image:
-    repository: ghcr.io/db-exp/cinemaabysstest/proxy-service
+    repository: ghcr.io/bormoley1983/architecture-cinemaabyss/proxy-service
     tag: latest
     pullPolicy: Always
   replicas: 1
@@ -65,7 +66,7 @@ proxyService:
       cpu: 100m
       memory: 128Mi
   service:
-    port: 80
+    port: 8000
     targetPort: 8000
     type: ClusterIP
 
@@ -73,7 +74,7 @@ proxyService:
 moviesService:
   enabled: true
   image:
-    repository: ghcr.io/db-exp/cinemaabysstest/movies-service
+    repository: ghcr.io/bormoley1983/architecture-cinemaabyss/movies-service
     tag: latest
     pullPolicy: Always
   replicas: 1
@@ -93,7 +94,7 @@ moviesService:
 eventsService:
   enabled: true
   image:
-    repository: ghcr.io/db-exp/cinemaabysstest/events-service
+    repository: ghcr.io/bormoley1983/architecture-cinemaabyss/events-service
     tag: latest
     pullPolicy: Always
   replicas: 1
@@ -113,17 +114,17 @@ eventsService:
 kafka:
   enabled: true
   image:
-    repository: wurstmeister/kafka
-    tag: 2.13-2.7.0
+    repository: apache/kafka
+    tag: "3.7.0"
     pullPolicy: IfNotPresent
   replicas: 1
   resources:
     limits:
       cpu: 1000m
-      memory: 1Gi
+      memory: 2Gi
     requests:
       cpu: 200m
-      memory: 512Mi
+      memory: 1Gi
   persistence:
     enabled: true
     size: 5Gi
@@ -139,26 +140,6 @@ kafka:
       partitions: 1
       replicationFactor: 1
 
-# Zookeeper configuration
-zookeeper:
-  enabled: true
-  image:
-    repository: wurstmeister/zookeeper
-    tag: latest
-    pullPolicy: IfNotPresent
-  replicas: 1
-  resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
-    requests:
-      cpu: 100m
-      memory: 256Mi
-  persistence:
-    enabled: true
-    size: 1Gi
-    accessMode: ReadWriteOnce
-
 # Ingress configuration
 ingress:
   enabled: true
@@ -172,7 +153,7 @@ ingress:
         - path: /
           pathType: Prefix
           service: proxy-service
-          port: 80
+          port: 8000
         - path: /api/events
           pathType: Prefix
           service: events-service
